@@ -15,6 +15,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: Install jq (JSON processor)
+        run: sudo apt-get update && sudo apt-get install -y jq
+
       - name: Request Streak from Duolingo PRO
         run: |
           echo "🔥 Starting Streak automation..."
@@ -31,11 +34,12 @@ jobs:
           
           echo "📤 Sending streak request (10 streak)..."
           
-          # Создаем корректный payload
+          # Создаем корректный payload с указанием языка (японский - ja)
           PAYLOAD='{
             "type": "streak",
             "amount": 10,
-            "version": "3.1BETA.03"
+            "version": "3.1BETA.03",
+            "lang": "ja"
           }'
           
           echo "🔄 Processing request (this may take a moment)..."
@@ -61,11 +65,12 @@ jobs:
           # Проверяем статус ответа
           if echo "$LAST_LINE" | grep -q '"status": "completed"'; then
             # Извлекаем сообщение об успехе
-            SUCCESS_MSG=$(echo "$LAST_LINE" | sed -n 's/.*"head": "\([^"]*\)".*/\1/p')
+            HEAD=$(echo "$LAST_LINE" | sed -n 's/.*"head": "\([^"]*\)".*/\1/p')
+            BODY=$(echo "$LAST_LINE" | sed -n 's/.*"body": "\([^"]*\)".*/\1/p' | sed 's/<[^>]*>//g')
             STREAK_AMOUNT=$(echo "$LAST_LINE" | sed -n 's/.*received \([0-9]*\) streak.*/\1/p')
             
-            if [ -n "$SUCCESS_MSG" ]; then
-              echo "✅ $SUCCESS_MSG"
+            if [ -n "$HEAD" ]; then
+              echo "✅ $HEAD"
             else
               echo "✅ Request completed successfully!"
             fi
@@ -76,13 +81,10 @@ jobs:
               echo "🔥 Successfully extended your streak!"
             fi
             
-            # Извлекаем дополнительную информацию
-            BODY_INFO=$(echo "$LAST_LINE" | sed -n 's/.*"body": "\([^"]*\)".*/\1/p' | sed 's/<[^>]*>//g')
-            if [ -n "$BODY_INFO" ]; then
-              echo "📊 $BODY_INFO"
+            # Выводим дополнительную информацию
+            if [ -n "$BODY" ]; then
+              echo "📊 $BODY"
             fi
-            
-            echo "⏰ Next request available in 4 hours"
             
           elif echo "$LAST_LINE" | grep -q '"status": false'; then
             # Обрабатываем лимит (как в случае с Super)
@@ -91,17 +93,21 @@ jobs:
             
             echo "⏳ LIMIT REACHED: $HEAD"
             echo "📊 Details: $BODY"
-            echo "✅ INFO: Daily limit already used - this is expected"
-            echo "🔄 Next streak request will be available according to the limit"
+            echo "✅ INFO: Daily limit already used - expected behavior"
             
           elif echo "$LAST_LINE" | grep -q '"status": "failed"'; then
             ERROR_MSG=$(echo "$LAST_LINE" | sed -n 's/.*"head": "\([^"]*\)".*/\1/p')
-            echo "❌ Request failed: $ERROR_MSG"
+            echo "❌ Request failed"
+            if [ -n "$ERROR_MSG" ]; then
+              echo "📝 Details: $ERROR_MSG"
+            fi
             exit 1
+            
           else
             # Если получили ответ, но не распознали формат
             if [ -n "$LAST_LINE" ]; then
-              echo "⚠️  Received response (check above for details)"
+              echo "⚠️  Response received (check above for details)"
+              echo "ℹ️  Continuing execution..."
             else
               echo "❌ ERROR: No response from server"
               exit 1
@@ -114,4 +120,3 @@ jobs:
         run: |
           echo "📝 Log entry: Streak automation ran"
           echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "Next scheduled run: In 4 hours"
